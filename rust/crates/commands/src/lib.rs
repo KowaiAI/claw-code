@@ -2488,6 +2488,13 @@ pub fn resolve_skill_path(cwd: &Path, skill: &str) -> std::io::Result<PathBuf> {
                     if !skill_path.is_file() {
                         continue;
                     }
+                    // Prevent path traversal attacks by rejecting paths containing '..'.
+                    if skill_path.components().any(|c| c == std::path::Component::ParentDir) {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::InvalidInput,
+                            format!("Invalid input: {}", skill_path.display()),
+                        ));
+                    }
                     let contents = fs::read_to_string(&skill_path)?;
                     let (name, _) = parse_skill_frontmatter(&contents);
                     entries.push((
@@ -3024,6 +3031,13 @@ fn install_skill_into(
 ) -> std::io::Result<InstalledSkill> {
     let source = resolve_skill_install_source(source, cwd)?;
     let prompt_path = source.prompt_path();
+    // Prevent path traversal attacks by rejecting paths containing '..'.
+    if prompt_path.components().any(|c| c == std::path::Component::ParentDir) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("Invalid input: {}", prompt_path.display()),
+        ));
+    }
     let contents = fs::read_to_string(prompt_path)?;
     let display_name = parse_skill_frontmatter(&contents).0;
     let invocation_name = derive_skill_install_name(&source, display_name.as_deref())?;
@@ -3045,6 +3059,13 @@ fn install_skill_into(
             copy_directory_contents(root, &installed_path)
         }
         SkillInstallSource::MarkdownFile { path } => {
+            // Prevent path traversal attacks by rejecting paths containing '..'.
+            if path.components().any(|c| c == std::path::Component::ParentDir) {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("Invalid input: {}", path.display()),
+                ));
+            }
             fs::copy(path, installed_path.join("SKILL.md")).map(|_| ())
         }
     };
@@ -3079,7 +3100,14 @@ fn default_skill_install_root() -> std::io::Result<PathBuf> {
 }
 
 fn resolve_skill_install_source(source: &str, cwd: &Path) -> std::io::Result<SkillInstallSource> {
+    // Prevent path traversal attacks by rejecting paths containing '..'.
     let candidate = PathBuf::from(source);
+    if candidate.components().any(|c| c == std::path::Component::ParentDir) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("Invalid input: {}", candidate.display()),
+        ));
+    }
     let source = if candidate.is_absolute() {
         candidate
     } else {
@@ -3170,15 +3198,39 @@ fn sanitize_skill_invocation_name(candidate: &str) -> Option<String> {
 }
 
 fn copy_directory_contents(source: &Path, destination: &Path) -> std::io::Result<()> {
+    // Prevent path traversal attacks by rejecting paths containing '..'.
+    if source.components().any(|c| c == std::path::Component::ParentDir) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("Invalid input: {}", source.display()),
+        ));
+    }
     for entry in fs::read_dir(source)? {
         let entry = entry?;
         let entry_type = entry.file_type()?;
-        let destination_path = destination.join(entry.file_name());
+        let file_name = entry.file_name();
+        // Prevent path traversal attacks by rejecting paths containing '..'.
+        let file_name_path = Path::new(&file_name);
+        if file_name_path.components().any(|c| c == std::path::Component::ParentDir) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Invalid input: {}", file_name_path.display()),
+            ));
+        }
+        let destination_path = destination.join(file_name);
         if entry_type.is_dir() {
             fs::create_dir_all(&destination_path)?;
             copy_directory_contents(&entry.path(), &destination_path)?;
         } else {
-            fs::copy(entry.path(), destination_path)?;
+            let entry_path = entry.path();
+            // Prevent path traversal attacks by rejecting paths containing '..'.
+            if entry_path.components().any(|c| c == std::path::Component::ParentDir) {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("Invalid input: {}", entry_path.display()),
+                ));
+            }
+            fs::copy(entry_path, destination_path)?;
         }
     }
     Ok(())
@@ -3249,7 +3301,15 @@ fn load_agents_from_roots(
             if entry.path().extension().is_none_or(|ext| ext != "toml") {
                 continue;
             }
-            let contents = fs::read_to_string(entry.path())?;
+            let entry_path = entry.path();
+            // Prevent path traversal attacks by rejecting paths containing '..'.
+            if entry_path.components().any(|c| c == std::path::Component::ParentDir) {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("Invalid input: {}", entry_path.display()),
+                ));
+            }
+            let contents = fs::read_to_string(entry_path)?;
             let fallback_name = entry.path().file_stem().map_or_else(
                 || entry.file_name().to_string_lossy().to_string(),
                 |stem| stem.to_string_lossy().to_string(),
@@ -3296,6 +3356,13 @@ fn load_skills_from_roots(roots: &[SkillRoot]) -> std::io::Result<Vec<SkillSumma
                     if !skill_path.is_file() {
                         continue;
                     }
+                    // Prevent path traversal attacks by rejecting paths containing '..'.
+                    if skill_path.components().any(|c| c == std::path::Component::ParentDir) {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::InvalidInput,
+                            format!("Invalid input: {}", skill_path.display()),
+                        ));
+                    }
                     let contents = fs::read_to_string(skill_path)?;
                     let (name, description) = parse_skill_frontmatter(&contents);
                     root_skills.push(SkillSummary {
@@ -3324,6 +3391,13 @@ fn load_skills_from_roots(roots: &[SkillRoot]) -> std::io::Result<Vec<SkillSumma
                         continue;
                     };
 
+                    // Prevent path traversal attacks by rejecting paths containing '..'.
+                    if markdown_path.components().any(|c| c == std::path::Component::ParentDir) {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::InvalidInput,
+                            format!("Invalid input: {}", markdown_path.display()),
+                        ));
+                    }
                     let contents = fs::read_to_string(&markdown_path)?;
                     let fallback_name = markdown_path.file_stem().map_or_else(
                         || entry.file_name().to_string_lossy().to_string(),
