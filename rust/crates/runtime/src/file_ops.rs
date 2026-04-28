@@ -19,6 +19,16 @@ const MAX_WRITE_SIZE: usize = 10 * 1024 * 1024;
 /// the first chunk for NUL bytes.
 fn is_binary_file(path: &Path) -> io::Result<bool> {
     use std::io::Read;
+    // Prevent path traversal attacks by rejecting paths containing '..'.
+    if path
+        .components()
+        .any(|c| c == std::path::Component::ParentDir)
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("Invalid input: {}", path.display()),
+        ));
+    }
     let mut file = fs::File::open(path)?;
     let mut buffer = [0u8; 8192];
     let bytes_read = file.read(&mut buffer)?;
@@ -200,6 +210,16 @@ pub fn read_file(
         ));
     }
 
+    // Prevent path traversal attacks by rejecting paths containing '..'.
+    if absolute_path
+        .components()
+        .any(|c| c == std::path::Component::ParentDir)
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("Invalid input: {}", absolute_path.display()),
+        ));
+    }
     let content = fs::read_to_string(&absolute_path)?;
     let lines: Vec<&str> = content.lines().collect();
     let start_index = offset.unwrap_or(0).min(lines.len());
@@ -234,6 +254,16 @@ pub fn write_file(path: &str, content: &str) -> io::Result<WriteFileOutput> {
     }
 
     let absolute_path = normalize_path_allow_missing(path)?;
+    // Prevent path traversal attacks by rejecting paths containing '..'.
+    if absolute_path
+        .components()
+        .any(|c| c == std::path::Component::ParentDir)
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("Invalid input: {}", absolute_path.display()),
+        ));
+    }
     let original_file = fs::read_to_string(&absolute_path).ok();
     if let Some(parent) = absolute_path.parent() {
         fs::create_dir_all(parent)?;
@@ -262,6 +292,16 @@ pub fn edit_file(
     replace_all: bool,
 ) -> io::Result<EditFileOutput> {
     let absolute_path = normalize_path(path)?;
+    // Prevent path traversal attacks by rejecting paths containing '..'.
+    if absolute_path
+        .components()
+        .any(|c| c == std::path::Component::ParentDir)
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("Invalid input: {}", absolute_path.display()),
+        ));
+    }
     let original_file = fs::read_to_string(&absolute_path)?;
     if old_string == new_string {
         return Err(io::Error::new(
@@ -302,7 +342,18 @@ pub fn glob_search(pattern: &str, path: Option<&str>) -> io::Result<GlobSearchOu
         .map(normalize_path)
         .transpose()?
         .unwrap_or(std::env::current_dir()?);
-    let search_pattern = if Path::new(pattern).is_absolute() {
+    // Prevent path traversal attacks by rejecting paths containing '..'.
+    let pattern_path = Path::new(pattern);
+    if pattern_path
+        .components()
+        .any(|c| c == std::path::Component::ParentDir)
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("Invalid input: {}", pattern_path.display()),
+        ));
+    }
+    let search_pattern = if pattern_path.is_absolute() {
         pattern.to_owned()
     } else {
         base_dir.join(pattern).to_string_lossy().into_owned()
@@ -384,6 +435,13 @@ pub fn grep_search(input: &GrepSearchInput) -> io::Result<GrepSearchOutput> {
             continue;
         }
 
+        // Prevent path traversal attacks by rejecting paths containing '..'.
+        if file_path
+            .components()
+            .any(|c| c == std::path::Component::ParentDir)
+        {
+            continue;
+        }
         let Ok(file_contents) = fs::read_to_string(&file_path) else {
             continue;
         };
@@ -543,7 +601,18 @@ fn normalize_path(path: &str) -> io::Result<PathBuf> {
 }
 
 fn normalize_path_allow_missing(path: &str) -> io::Result<PathBuf> {
-    let candidate = if Path::new(path).is_absolute() {
+    // Prevent path traversal attacks by rejecting paths containing '..'.
+    let path_ref = Path::new(path);
+    if path_ref
+        .components()
+        .any(|c| c == std::path::Component::ParentDir)
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("Invalid input: {}", path_ref.display()),
+        ));
+    }
+    let candidate = if path_ref.is_absolute() {
         PathBuf::from(path)
     } else {
         std::env::current_dir()?.join(path)

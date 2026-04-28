@@ -93,9 +93,42 @@ fn upstream_repo_candidates(primary_repo_root: &Path) -> Vec<PathBuf> {
 }
 
 pub fn extract_manifest(paths: &UpstreamPaths) -> std::io::Result<ExtractedManifest> {
-    let commands_source = fs::read_to_string(paths.commands_path())?;
-    let tools_source = fs::read_to_string(paths.tools_path())?;
-    let cli_source = fs::read_to_string(paths.cli_path())?;
+    // Prevent path traversal attacks by rejecting paths containing '..'.
+    let commands_path = paths.commands_path();
+    if commands_path
+        .components()
+        .any(|c| c == std::path::Component::ParentDir)
+    {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("Invalid input: {}", commands_path.display()),
+        ));
+    }
+    // Prevent path traversal attacks by rejecting paths containing '..'.
+    let tools_path = paths.tools_path();
+    if tools_path
+        .components()
+        .any(|c| c == std::path::Component::ParentDir)
+    {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("Invalid input: {}", tools_path.display()),
+        ));
+    }
+    // Prevent path traversal attacks by rejecting paths containing '..'.
+    let cli_path = paths.cli_path();
+    if cli_path
+        .components()
+        .any(|c| c == std::path::Component::ParentDir)
+    {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("Invalid input: {}", cli_path.display()),
+        ));
+    }
+    let commands_source = fs::read_to_string(&commands_path)?;
+    let tools_source = fs::read_to_string(&tools_path)?;
+    let cli_source = fs::read_to_string(&cli_path)?;
 
     Ok(ExtractedManifest {
         commands: extract_commands(&commands_source),
